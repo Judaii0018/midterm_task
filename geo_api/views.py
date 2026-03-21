@@ -1,42 +1,49 @@
 from django.shortcuts import render
 
-# Created views here.
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .services import get_geo_insights
+
+from .services import get_country_insights   # ✅ updated import
 from .serializers import GeoInsightSerializer
+
 from drf_spectacular.utils import extend_schema, OpenApiParameter
+
 
 class GeoInsightView(APIView):
 
     @extend_schema(
-        summary="Get Geographic Insights",
-        description="Combines Location API and Population API data to provide density metrics.",
+        summary="Get Country Insights",
+        description="Retrieve country data and calculate population density using RestCountries API.",
         parameters=[
-            OpenApiParameter(name='target', description='IP Address or Domain', required=True, type=str)
+            OpenApiParameter(
+                name='country',
+                description='Name of the country (e.g., Philippines, Japan)',
+                required=True,
+                type=str
+            )
         ],
         responses={200: GeoInsightSerializer}
     )
     def get(self, request):
-        # Retrieve the 'target' query parameter (e.g., ?target=google.com)
-        target = request.query_params.get('target')
+        # ✅ Get country from query params
+        country = request.query_params.get('country')
 
-        if not target:
+        if not country:
             return Response(
-                {"error": "Please provide a 'target' query parameter (IP or domain)."},
+                {"error": "Please provide a 'country' query parameter."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Call the service logic from Phase 3
-        data = get_geo_insights(target)
+        # ✅ Call updated service
+        data = get_country_insights(country)
 
         if data is None:
             return Response(
-                {"error": "Could not retrieve data for the provided target."},
+                {"error": "Country not found or data unavailable."},
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Serialize the data and return it
+        # ✅ Serialize response
         serializer = GeoInsightSerializer(data)
         return Response(serializer.data, status=status.HTTP_200_OK)

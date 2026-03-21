@@ -3,72 +3,55 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def get_geo_insights(ip_or_domain):
+def get_country_insights(country_name):
     """
-    Retrieves and integrates data from ip-api and restcountries.
-    Performs data transformation by calculating population density.
+    Retrieves country data directly from restcountries API
+    and calculates population density.
     """
-    print(f"\n--- [DEBUG] Starting Live Retrieval for: {ip_or_domain} ---")
-    
+
+    logger.info(f"Fetching data for country: {country_name}")
+
     try:
-        # 1. Location API call
-        loc_res = requests.get(f"http://ip-api.com/json/{ip_or_domain}", timeout=10)
-        loc_data = loc_res.json()
-        
-        if loc_data.get('status') != 'success':
-            print(f"[DEBUG] Location API failed: {loc_data.get('message')}")
-            return None
-
-        country_name = loc_data.get('country')
-        print(f"[DEBUG] Country Identified: {country_name}")
-
-        # 2. Population API call
-        pop_res = requests.get(
-            f"https://restcountries.com/v3.1/name/{country_name}", 
-            params={"fullText": "true"}, 
+        res = requests.get(
+            f"https://restcountries.com/v3.1/name/{country_name}",
             timeout=10
         )
-        pop_json = pop_res.json()
+        res.raise_for_status()
+        data = res.json()
 
-        # --- THE CRITICAL FIX ---
-        # The API returns a LIST [ {...} ]. We must grab the first dictionary inside it.
-        if isinstance(pop_json, list) and len(pop_json) > 0:
-            pop_data = pop_json # This changes the type from list to dict
-        else:
-            print("[DEBUG] Population API returned an empty list or error.")
+        if not isinstance(data, list) or len(data) == 0:
+            logger.error("No country data found.")
             return None
 
-        # 3. Data Transformation (Calculation)
-        # Now that pop_data is a dictionary, .get() will work perfectly
-        population = pop_data.get('population', 0)
-        area = pop_data.get('area', 0)
-        
-        # Calculation: Density = Population / Area
-        density = population / area if area > 0 else 0
-        
-        print(f"[DEBUG] Transformation Successful. Density: {round(density, 2)}")
+        country = data[0]
 
-        # 4. Return Unified JSON Structure
+        # Extract values
+        population = country.get('population', 0)
+        area = country.get('area', 0)
+        density = population / area if area else 0
+
+        # Coordinates (latlng = [lat, lon])
+        latlng = country.get('latlng', [None, None])
+
         return {
-            "city": loc_data.get('city'),
-            "country": country_name,
+            "country": country.get('name', {}).get('common'),
+            "capital": country.get('capital', [None])[0],
+            "region": country.get('region'),
             "coordinates": {
-                "lat": loc_data.get('lat'), 
-                "lon": loc_data.get('lon')
+                "lat": latlng[0],
+                "lon": latlng[1]
             },
             "population_stats": {
                 "total_population": population,
                 "land_area_sq_km": area,
                 "density_per_sq_km": round(density, 2)
             },
-            # Flags are nested: pop_data['flags']['png']
-            "flag": pop_data.get('flags', {}).get('png')
+            "flag": country.get('flags', {}).get('png')
         }
 
-    except requests.exceptions.Timeout:
-        print("[ERROR] Connection timed out. Network restricted.")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request failed: {e}")
     except Exception as e:
-        # This will catch the 'list' error if pop_data isn't handled correctly
-        print(f"[ERROR] Unexpected error: {e}")
+        logger.error(f"Unexpected error: {e}")
 
     return None
